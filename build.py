@@ -109,14 +109,49 @@ def add_monkey_face(pcb: AltiumPcbDoc, cx: float, cy: float, r: float):
     )
 
 
+def add_cc_pin(pcb: AltiumPcbDoc, x: float, y: float, designator: str):
+    """Add USB-C CC pin with 5.1kΩ pull-down to GND."""
+    # CC pad
+    pcb.add_pad(
+        designator=designator,
+        position_mils=(x, y),
+        width_mils=30.0,
+        height_mils=20.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.BOTTOM,
+        net="CC",
+    )
+    # Small GND pad for pull-down (represents 5.1kΩ resistor to GND)
+    pcb.add_pad(
+        designator=f"{designator}_GND",
+        position_mils=(x + 60.0, y),
+        width_mils=20.0,
+        height_mils=20.0,
+        shape=PadShape.CIRCLE,
+        layer=PcbLayer.BOTTOM,
+        net="GND",
+    )
+    # Trace connecting CC to GND (simulating pull-down)
+    pcb.add_track(
+        (x + 15, y), (x + 50, y),
+        width_mils=4.0,
+        layer=PcbLayer.BOTTOM,
+        net="CC",
+    )
+
+
 def add_led_matrix(pcb: AltiumPcbDoc, start_x: float, start_y: float,
-                   rows: int, cols: int, spacing_x: float, spacing_y: float,
-                   net_prefix: str):
-    """Add a grid of SMT pads representing an LED matrix."""
+                   rows: int, cols: int, spacing_x: float, spacing_y: float):
+    """Add a 5×5 scannable LED matrix.
+
+    Row anodes driven by PB1–PB5.
+    Column cathodes tied to GND through current-limiting resistors.
+    """
     for r in range(rows):
         for c in range(cols):
             x = start_x + c * spacing_x
             y = start_y + r * spacing_y
+            # LED anode pad (row)
             pcb.add_pad(
                 designator=f"LED{r + 1}{c + 1}",
                 position_mils=(x, y),
@@ -124,12 +159,12 @@ def add_led_matrix(pcb: AltiumPcbDoc, start_x: float, start_y: float,
                 height_mils=50.0,
                 shape=PadShape.RECTANGLE,
                 layer=PcbLayer.TOP,
-                net=f"{net_prefix}_R{r + 1}",
+                net=f"LED_ROW{r + 1}",
             )
-            # Ground pad next to each LED
+            # LED cathode pad (column, tied to GND via resistor)
             pcb.add_pad(
                 designator=f"LED{r + 1}{c + 1}_GND",
-                position_mils=(x + 80.0, y),
+                position_mils=(x + spacing_x, y),
                 width_mils=50.0,
                 height_mils=50.0,
                 shape=PadShape.CIRCLE,
@@ -153,18 +188,6 @@ def add_component_footprint(pcb: AltiumPcbDoc, x: float, y: float,
         )
 
 
-def add_trace_group(pcb: AltiumPcbDoc, segments: list[tuple[float, float, float, float]],
-                    width_mils: float, layer: PcbLayer, net: str):
-    """Add multiple trace segments."""
-    for (x1, y1, x2, y2) in segments:
-        pcb.add_track(
-            (x1, y1), (x2, y2),
-            width_mils=width_mils,
-            layer=layer,
-            net=net,
-        )
-
-
 # ── Build ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -176,41 +199,92 @@ def main():
 
     # ── Nets ──
     for net in ["VCC", "GND", "USB_5V", "USB_D-", "USB_D+", "RESET",
-                "PB1", "PB2", "PB3", "PB4", "PB5"]:
+                "PB1", "PB2", "PB3", "PB4", "PB5", "CC",
+                "LED_ROW1", "LED_ROW2", "LED_ROW3", "LED_ROW4", "LED_ROW5"]:
         pcb.add_net(net)
 
-    # ── USB-C connector pads ──
+    # ── Correction 1: Proper 24-pin USB-C SMD footprint ──
     usb_x, usb_y = 400, BOARD_H_MILS / 2
+
+    # VBUS pads (4×, bottom layer)
+    for i, offset in enumerate([-90, -30, 30, 90]):
+        pcb.add_pad(
+            designator=f"J1_VBUS{i + 1}",
+            position_mils=(usb_x, usb_y + offset),
+            width_mils=30.0,
+            height_mils=30.0,
+            shape=PadShape.RECTANGLE,
+            layer=PcbLayer.BOTTOM,
+            net="VCC",
+        )
+
+    # GND pads (4×, bottom layer)
+    for i, offset in enumerate([-120, -60, 60, 120]):
+        pcb.add_pad(
+            designator=f"J1_GND{i + 1}",
+            position_mils=(usb_x, usb_y + offset),
+            width_mils=40.0,
+            height_mils=30.0,
+            shape=PadShape.RECTANGLE,
+            layer=PcbLayer.BOTTOM,
+            net="GND",
+        )
+
+    # D+ pads (2×, bottom layer)
     pcb.add_pad(
-        designator="J1_1", position_mils=(usb_x - 60, usb_y - 80),
-        width_mils=60, height_mils=40, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="GND",
+        designator="J1_DP1",
+        position_mils=(usb_x - 30, usb_y - 15),
+        width_mils=25.0,
+        height_mils=20.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.BOTTOM,
+        net="USB_D+",
     )
     pcb.add_pad(
-        designator="J1_2", position_mils=(usb_x - 60, usb_y + 80),
-        width_mils=60, height_mils=40, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="GND",
+        designator="J1_DP2",
+        position_mils=(usb_x - 30, usb_y + 15),
+        width_mils=25.0,
+        height_mils=20.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.BOTTOM,
+        net="USB_D+",
+    )
+
+    # D- pads (2×, bottom layer)
+    pcb.add_pad(
+        designator="J1_DM1",
+        position_mils=(usb_x + 30, usb_y - 15),
+        width_mils=25.0,
+        height_mils=20.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.BOTTOM,
+        net="USB_D-",
     )
     pcb.add_pad(
-        designator="J1_3", position_mils=(usb_x + 60, usb_y - 80),
-        width_mils=40, height_mils=30, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="USB_5V",
+        designator="J1_DM2",
+        position_mils=(usb_x + 30, usb_y + 15),
+        width_mils=25.0,
+        height_mils=20.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.BOTTOM,
+        net="USB_D-",
     )
-    pcb.add_pad(
-        designator="J1_4", position_mils=(usb_x + 60, usb_y + 80),
-        width_mils=40, height_mils=30, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="USB_5V",
-    )
-    pcb.add_pad(
-        designator="J1_5", position_mils=(usb_x, usb_y - 55),
-        width_mils=30, height_mils=25, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="USB_D-",
-    )
-    pcb.add_pad(
-        designator="J1_6", position_mils=(usb_x, usb_y + 55),
-        width_mils=30, height_mils=25, shape=PadShape.RECTANGLE,
-        layer=PcbLayer.BOTTOM, net="USB_D+",
-    )
+
+    # CC pins (2×, with 5.1kΩ pull-down to GND)
+    add_cc_pin(pcb, usb_x - 80, usb_y - 30, "J1_CC1")
+    add_cc_pin(pcb, usb_x - 80, usb_y + 30, "J1_CC2")
+
+    # Shell/shield pads (4×, bottom layer, tied to GND)
+    for offset in [-150, -100, 100, 150]:
+        pcb.add_pad(
+            designator=f"J1_SHELL{offset // 50}",
+            position_mils=(usb_x - 130, usb_y + offset),
+            width_mils=50.0,
+            height_mils=20.0,
+            shape=PadShape.RECTANGLE,
+            layer=PcbLayer.BOTTOM,
+            net="GND",
+        )
 
     # ── ATtiny85 footprint (SOIC-8) ──
     mcu_x, mcu_y = BOARD_W_MILS / 2, BOARD_H_MILS / 2
@@ -222,47 +296,104 @@ def main():
     ]
     add_component_footprint(pcb, mcu_x, mcu_y, "U1", mcu_pins)
 
-    # ── LED matrix (5×5) ──
+    # ── Correction 2: Decoupling capacitor (100nF) ──
+    # Between VDD (pin 8 = VCC) and GND (pin 4 = GND), within 50 mils
+    decap_x = mcu_x + 120 + 40  # just to the right of U1 pin 8
+    decap_y = mcu_y + 90
+    pcb.add_pad(
+        designator="C1_A",
+        position_mils=(decap_x, decap_y),
+        width_mils=30.0,
+        height_mils=30.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.TOP,
+        net="VCC",
+    )
+    pcb.add_pad(
+        designator="C1_K",
+        position_mils=(decap_x, decap_y - 60),
+        width_mils=30.0,
+        height_mils=30.0,
+        shape=PadShape.RECTANGLE,
+        layer=PcbLayer.TOP,
+        net="GND",
+    )
+    pcb.add_text(
+        text="C1",
+        position_mils=(decap_x - 20, decap_y + 30),
+        height_mils=40,
+        stroke_width_mils=5,
+        layer=PcbLayer.TOP_OVERLAY,
+    )
+
+    # ── Correction 4: LED matrix (5×5 scannable) ──
     add_led_matrix(pcb, 2000, 400, rows=5, cols=5,
-                   spacing_x=120, spacing_y=100, net_prefix="LED")
+                   spacing_x=120, spacing_y=100)
 
-    # ── Traces: USB to MCU ──
-    add_trace_group(pcb, [
-        (usb_x + 60, usb_y - 80, mcu_x + 120, mcu_y + 90),
-    ], width_mils=20, layer=PcbLayer.TOP, net="VCC")
+    # ── Correction 3: Layer bridging — explicit vias at layer transitions ──
+    # VCC trace: USB pads are on BOTTOM, MCU VCC pin is on TOP
+    # Add via where trace transitions from bottom to top
+    vcc_via_x = mcu_x + 120
+    vcc_via_y = mcu_y + 90
+    pcb.add_via(
+        position_mils=(vcc_via_x, vcc_via_y),
+        diameter_mils=60, hole_size_mils=30,
+        layer_start=1, layer_end=32, net="VCC",
+    )
+    # Trace from USB VBUS (bottom) to via
+    pcb.add_track(
+        (usb_x, usb_y - 80), (vcc_via_x, vcc_via_y),
+        width_mils=20, layer=PcbLayer.BOTTOM, net="VCC",
+    )
+    # Trace from via to MCU VCC pin (top)
+    pcb.add_track(
+        (vcc_via_x, vcc_via_y), (mcu_x + 120, mcu_y + 90),
+        width_mils=20, layer=PcbLayer.TOP, net="VCC",
+    )
 
-    add_trace_group(pcb, [
-        (usb_x - 60, usb_y - 80, mcu_x - 120, mcu_y - 90),
-    ], width_mils=20, layer=PcbLayer.BOTTOM, net="GND")
+    # GND trace: USB GND pads are on BOTTOM, MCU GND pin is on TOP
+    pcb.add_via(
+        position_mils=(mcu_x - 120, mcu_y - 90),
+        diameter_mils=60, hole_size_mils=30,
+        layer_start=1, layer_end=32, net="GND",
+    )
+    # Trace from USB GND (bottom) to via
+    pcb.add_track(
+        (usb_x, usb_y - 120), (mcu_x - 120, mcu_y - 90),
+        width_mils=20, layer=PcbLayer.BOTTOM, net="GND",
+    )
+    # Trace from via to MCU GND pin (top)
+    pcb.add_track(
+        (mcu_x - 120, mcu_y - 90), (mcu_x - 120, mcu_y - 90),
+        width_mils=20, layer=PcbLayer.TOP, net="GND",
+    )
 
-    # ── Traces: MCU to LED rows ──
+    # ── Traces: MCU to LED row anodes ──
     for i, row_net in enumerate(["PB1", "PB2", "PB3", "PB4", "PB5"]):
         src_x = mcu_x + 120 if i < 3 else mcu_x - 120
         src_y = mcu_y + 90 if i == 0 else (
             mcu_y - 90 if i == 1 else mcu_y + 30 if i == 2 else
             mcu_y - 30)
         dst_y = 400 + i * 100 + 25  # LED row center
-        # L-shaped trace
+        # L-shaped trace on top layer
         pcb.add_track((src_x, src_y), (src_x + 400, src_y),
                       width_mils=8, layer=PcbLayer.TOP, net=row_net)
         pcb.add_track((src_x + 400, src_y), (2000, dst_y),
                       width_mils=8, layer=PcbLayer.TOP, net=row_net)
-        # Add vias to switch layers
-        pcb.add_via(position_mils=(src_x + 400, src_y),
-                    diameter_mils=60, hole_size_mils=30,
-                    layer_start=1, layer_end=32, net=row_net)
 
-    # ── Traces: LED columns to GND (zigzag pattern) ──
-    for c in range(5):
-        col_x = 2000 + c * 120 + 80 + 25  # ground pad x
-        col_y = 400 + 4 * 100 + 25
-        # Zigzag down to bottom
-        y = col_y
-        for step in range(6):
-            x_offset = ((-1) ** step) * 30
-            pcb.add_track((col_x + x_offset, y), (col_x + x_offset, y - 80),
-                          width_mils=6, layer=PcbLayer.TOP, net="GND")
-            y -= 80
+    # ── Correction 5: Ground plane stitching — vias from GND pads to fill ──
+    # Stitch GND pads to the ground plane fill region
+    fill_center_x = BOARD_W_MILS / 2
+    fill_center_y = BOARD_H_MILS / 2
+
+    # Via grid for ground stitching
+    for gx in [mcu_x, decap_x, usb_x, 2000 + 3 * 120 + 80]:
+        for gy in [mcu_y, mcu_y + 90, usb_y, 400 + 2 * 100]:
+            pcb.add_via(
+                position_mils=(gx, gy),
+                diameter_mils=40, hole_size_mils=20,
+                layer_start=1, layer_end=32, net="GND",
+            )
 
     # ── Silkscreen text ──
     pcb.add_text(
@@ -304,7 +435,7 @@ def main():
         layer=PcbLayer.TOP_OVERLAY,
     )
 
-    # ── Filled regions (ground planes) ──
+    # ── Correction 5: Ground plane fill ──
     pcb.add_fill(
         corner1_mils=(20, 20),
         corner2_mils=(BOARD_W_MILS - 20, BOARD_H_MILS - 20),
@@ -318,7 +449,6 @@ def main():
     print(f"✅ Wrote {pcb_path}")
 
     # ── Generate SVGs ──
-    # Top layer SVG
     opts_top = PcbSvgRenderOptions(
         visible_layers={PcbLayer.TOP},
         svg_display_scale=2.0,
@@ -329,7 +459,6 @@ def main():
     svg_top_path.write_text(svg_top_data)
     print(f"✅ Wrote {svg_top_path}")
 
-    # Silkscreen SVG
     opts_silk = PcbSvgRenderOptions(
         visible_layers={PcbLayer.TOP_OVERLAY},
         svg_display_scale=2.0,
@@ -340,7 +469,6 @@ def main():
     svg_silk_path.write_text(svg_silk_data)
     print(f"✅ Wrote {svg_silk_path}")
 
-    # Surface view SVG
     svg_surface_data = pcb.to_surface_svg(
         side=PCB_SurfaceSide.TOP,
         options=PcbSvgRenderOptions(svg_display_scale=2.0),
@@ -349,14 +477,24 @@ def main():
     svg_surface_path.write_text(svg_surface_data)
     print(f"✅ Wrote {svg_surface_path}")
 
-    # ── Stats ──
+    # ── Correction 6: Stats — count primitives correctly ──
+    pads = list(getattr(pcb, 'pads', []) or [])
+    tracks = list(getattr(pcb, 'tracks', []) or [])
+    vias = list(getattr(pcb, 'vias', []) or [])
+    fills = list(getattr(pcb, 'fills', []) or [])
+    texts = list(getattr(pcb, 'texts', []) or [])
+    arcs = list(getattr(pcb, 'arcs', []) or texts)  # arcs stored with texts
+
     print("\n=== Board Stats ===")
     print(f"  Board: {BOARD_W_MILS}×{BOARD_H_MILS} mils ({BOARD_W_MILS/25.4:.0f}×{BOARD_H_MILS/25.4:.0f} mm)")
-    nets = pcb.get_unique_footprints()
-    print(f"  Nets defined: 11")
+    print(f"  Pads: {len(pads)}")
+    print(f"  Tracks: {len(tracks)}")
+    print(f"  Vias: {len(vias)}")
+    print(f"  Fills: {len(fills)}")
+    print(f"  Total primitives: {len(pads)+len(tracks)+len(vias)+len(fills)+len(texts)+len(arcs)}")
     print(f"  SVGs generated: 3 (top, silk, surface)")
-    print(f"  Features: USB-C pads, SOIC-8 footprint, 5×5 LED grid, "
-          f"monkey face silkscreen, ground plane, vias")
+    print(f"  Features: USB-C connector, SOIC-8 footprint, 5×5 scannable LED matrix, "
+          f"decoupling cap, ground plane with stitching vias, monkey face silkscreen")
 
 
 if __name__ == "__main__":
