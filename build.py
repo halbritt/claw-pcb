@@ -352,23 +352,22 @@ def main():
     )
 
     # GND trace: USB GND pads are on BOTTOM, MCU GND pin is on TOP
+    # Place via 80 mils left of the MCU GND pin
+    gnd_via_x = mcu_x - 200
+    gnd_via_y = mcu_y - 90
     pcb.add_via(
-        position_mils=(mcu_x - 120, mcu_y - 90),
+        position_mils=(gnd_via_x, gnd_via_y),
         diameter_mils=60, hole_size_mils=30,
         layer_start=1, layer_end=32, net="GND",
     )
     # Trace from USB GND (bottom) to via
     pcb.add_track(
-        (usb_x, usb_y - 120), (mcu_x - 120, mcu_y - 90),
+        (usb_x, usb_y - 120), (gnd_via_x, gnd_via_y),
         width_mils=20, layer=PcbLayer.BOTTOM, net="GND",
     )
-    # Trace from via to MCU GND pin (top) — route to intermediate point first
+    # Trace from via to MCU GND pin (top)
     pcb.add_track(
-        (mcu_x - 120, mcu_y - 90), (mcu_x - 80, mcu_y - 90),
-        width_mils=20, layer=PcbLayer.TOP, net="GND",
-    )
-    pcb.add_track(
-        (mcu_x - 80, mcu_y - 90), (mcu_x - 120, mcu_y - 90),
+        (gnd_via_x, gnd_via_y), (mcu_x - 120, mcu_y - 90),
         width_mils=20, layer=PcbLayer.TOP, net="GND",
     )
 
