@@ -362,9 +362,13 @@ def main():
         (usb_x, usb_y - 120), (mcu_x - 120, mcu_y - 90),
         width_mils=20, layer=PcbLayer.BOTTOM, net="GND",
     )
-    # Trace from via to MCU GND pin (top)
+    # Trace from via to MCU GND pin (top) — route to intermediate point first
     pcb.add_track(
-        (mcu_x - 120, mcu_y - 90), (mcu_x - 120, mcu_y - 90),
+        (mcu_x - 120, mcu_y - 90), (mcu_x - 80, mcu_y - 90),
+        width_mils=20, layer=PcbLayer.TOP, net="GND",
+    )
+    pcb.add_track(
+        (mcu_x - 80, mcu_y - 90), (mcu_x - 120, mcu_y - 90),
         width_mils=20, layer=PcbLayer.TOP, net="GND",
     )
 
@@ -483,7 +487,7 @@ def main():
     vias = list(getattr(pcb, 'vias', []) or [])
     fills = list(getattr(pcb, 'fills', []) or [])
     texts = list(getattr(pcb, 'texts', []) or [])
-    arcs = list(getattr(pcb, 'arcs', []) or texts)  # arcs stored with texts
+    arcs = list(getattr(pcb, 'arcs', []) or [])
 
     print("\n=== Board Stats ===")
     print(f"  Board: {BOARD_W_MILS}×{BOARD_H_MILS} mils ({BOARD_W_MILS/25.4:.0f}×{BOARD_H_MILS/25.4:.0f} mm)")
